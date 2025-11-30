@@ -137,3 +137,42 @@ class DataSyncLog(Base):
     records_synced = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     mcp_response_time_ms = Column(Integer, nullable=True)
+
+
+class CachedRoadCondition(Base):
+    """
+    Cached road condition data from MCP.
+    Stores PCI, IRI, DMI and other road metrics for highway sections.
+    """
+    __tablename__ = "cached_road_conditions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    province = Column(String, nullable=False, index=True)
+    highway = Column(String, nullable=False, index=True)
+    direction = Column(String, nullable=True)
+    
+    # Section identification
+    section_from = Column(String, nullable=True)
+    section_to = Column(String, nullable=True)
+    km_start = Column(Float, nullable=True)
+    km_end = Column(Float, nullable=True)
+    
+    # Condition metrics
+    pci = Column(Float, nullable=True)  # Pavement Condition Index 0-100
+    condition = Column(String, nullable=True)  # Good, Fair, Poor, Critical
+    dmi = Column(Float, nullable=True)  # Distress Manifestation Index
+    iri = Column(Float, nullable=True)  # International Roughness Index
+    
+    # Road characteristics
+    pavement_type = Column(String, nullable=True)  # AC, PCC, COMP, ST, GRAVEL
+    functional_class = Column(String, nullable=True)  # arterial, collector, etc.
+    aadt = Column(Integer, nullable=True)  # Average Annual Daily Traffic
+    pavement_age = Column(Integer, nullable=True)
+    
+    # Location
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    
+    # Cache management
+    cached_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    data_source = Column(String, default="MCP")  # MCP or generated

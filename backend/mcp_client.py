@@ -20,7 +20,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 # MCP Server Configuration (SSE endpoints)
-MCP_TRANSPORTATION_URL = os.getenv("MCP_TRANSPORTATION_URL", "http://localhost:9001/sse")
+MCP_TRANSPORTATION_URL = os.getenv("MCP_TRANSPORTATION_URL", "http://localhost:8001/sse")
 MCP_DATASET_URL = os.getenv("MCP_DATASET_URL", "http://localhost:9000/sse")
 
 # Timeout settings
@@ -180,6 +180,50 @@ class TransportationMCPClient:
             )
         except Exception as e:
             print(f"compare_across_regions failed: {e}")
+            return None
+    
+    def query_road_condition(
+        self, 
+        province: str = None, 
+        highway: str = None,
+        min_pci: float = None,
+        max_pci: float = None,
+        condition: str = None,
+        limit: int = 100
+    ) -> Optional[Dict]:
+        """
+        Call query_road_conditions tool (note: plural 'conditions').
+        Returns road/highway condition data including:
+        - PCI (Pavement Condition Index): 0-100 scale
+        - DMI (Distress Manifestation Index)
+        - IRI (International Roughness Index)
+        - Pavement type, section info, coordinates
+        
+        PCI thresholds:
+        - >=80: Good
+        - 60-79: Fair  
+        - 40-59: Poor
+        - <40: Critical
+        """
+        try:
+            params = {}
+            if province:
+                params["province"] = province
+            if highway:
+                params["highway"] = highway
+            if min_pci is not None:
+                params["min_pci"] = min_pci
+            if max_pci is not None:
+                params["max_pci"] = max_pci
+            if condition:
+                params["condition"] = condition
+            params["limit"] = limit
+            
+            return run_async(
+                self.async_client.call_tool("query_road_conditions", params)
+            )
+        except Exception as e:
+            print(f"query_road_conditions failed: {e}")
             return None
     
     def list_tools(self) -> Optional[List[Dict]]:
