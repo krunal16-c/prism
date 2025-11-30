@@ -45,8 +45,42 @@ interface Bridge {
   rank?: number;
 }
 
+interface RoadSection {
+  id: string;
+  type: "road";
+  highway: string;
+  section_description: string;
+  region: string;
+  section_from: string | null;
+  section_to: string | null;
+  km_start: number | null;
+  km_end: number | null;
+  length_km: number;
+  latitude: number | null;
+  longitude: number | null;
+  condition: string;
+  pci: number | null;
+  dmi: number | null;
+  iri: number | null;
+  pavement_type: string | null;
+  aadt: number | null;
+  risk_score: number;
+  estimated_repair_cost: number;
+  cost_display: string;
+  cost_per_km: number;
+  cost_range_low: number;
+  cost_range_high: number;
+  risk_cost_ratio: number;
+  is_critical: boolean;
+  is_high_risk: boolean;
+  justification: string;
+  rank?: number;
+}
+
 interface OptimizationSummary {
   bridges_selected: number;
+  roads_selected: number;
+  total_infrastructure_selected: number;
   total_cost: number;
   cost_display: string;
   budget_remaining: number;
@@ -56,6 +90,8 @@ interface OptimizationSummary {
   avg_risk_score: number;
   critical_bridges_funded: number;
   critical_bridges_unfunded: number;
+  critical_roads_funded: number;
+  critical_roads_unfunded: number;
 }
 
 interface OptimizationResult {
@@ -63,8 +99,10 @@ interface OptimizationResult {
   budget: number;
   budget_display: string;
   selected_bridges: Bridge[];
+  selected_roads: RoadSection[];
   summary: OptimizationSummary;
   unfunded_critical_bridges: Bridge[];
+  unfunded_critical_roads: RoadSection[];
   warnings: string[];
   algorithm: string;
 }
@@ -107,6 +145,32 @@ interface HighRiskBridgesResult {
   bridges: Bridge[];
 }
 
+interface HighRiskRoadsResult {
+  region: string;
+  total_high_risk_roads: number;
+  critical_roads: number;
+  total_repair_cost: number;
+  total_repair_cost_display: string;
+  critical_repair_cost: number;
+  critical_repair_cost_display: string;
+  total_length_km: number;
+  roads: RoadSection[];
+}
+
+interface HighRiskInfrastructureResult {
+  region: string;
+  summary: {
+    total_infrastructure_count: number;
+    total_critical_count: number;
+    total_repair_cost: number;
+    total_repair_cost_display: string;
+    total_critical_repair_cost: number;
+    total_critical_repair_cost_display: string;
+  };
+  bridges: HighRiskBridgesResult;
+  roads: HighRiskRoadsResult;
+}
+
 // Regions list
 const REGIONS = [
   "Ontario",
@@ -139,19 +203,25 @@ export default function FundingOptimizer() {
   const [region, setRegion] = useState("Ontario");
   const [budget, setBudget] = useState(50_000_000);
   const [includeMediumRisk, setIncludeMediumRisk] = useState(false);
+  const [includeRoads, setIncludeRoads] = useState(true);
   const [displayMode, setDisplayMode] = useState<"compact" | "full">("compact");
   
   // Data state
   const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [highRiskBridges, setHighRiskBridges] = useState<HighRiskBridgesResult | null>(null);
+  const [highRiskRoads, setHighRiskRoads] = useState<HighRiskRoadsResult | null>(null);
+  const [highRiskInfra, setHighRiskInfra] = useState<HighRiskInfrastructureResult | null>(null);
   
   // Loading state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Active view
-  const [activeView, setActiveView] = useState<"optimization" | "comparison" | "all-bridges">("optimization");
+  const [activeView, setActiveView] = useState<"optimization" | "comparison" | "all-infrastructure">("optimization");
+  
+  // Infrastructure filter for all-infrastructure view
+  const [infraFilter, setInfraFilter] = useState<"all" | "bridges" | "roads">("all");
   
   // Debounce timer
   const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
@@ -164,7 +234,7 @@ export default function FundingOptimizer() {
     try {
       const [optRes, compRes] = await Promise.all([
         fetch(
-          `${API_BASE}/api/funding/optimize?region=${encodeURIComponent(region)}&budget=${budget}&include_medium_risk=${includeMediumRisk}`
+          `${API_BASE}/api/funding/optimize?region=${encodeURIComponent(region)}&budget=${budget}&include_medium_risk=${includeMediumRisk}&include_roads=${includeRoads}`
         ),
         fetch(
           `${API_BASE}/api/funding/compare?region=${encodeURIComponent(region)}&budget=${budget}`
@@ -185,27 +255,38 @@ export default function FundingOptimizer() {
     } finally {
       setLoading(false);
     }
-  }, [region, budget, includeMediumRisk]);
+  }, [region, budget, includeMediumRisk, includeRoads]);
 
-  // Fetch all high-risk bridges
-  const fetchHighRiskBridges = useCallback(async () => {
+  // Fetch all high-risk infrastructure
+  const fetchHighRiskInfrastructure = useCallback(async () => {
     try {
-      const res = await fetch(
-        `${API_BASE}/api/funding/bridges?region=${encodeURIComponent(region)}`
-      );
-      if (res.ok) {
-        const data = await res.json();
+      const [bridgesRes, roadsRes, infraRes] = await Promise.all([
+        fetch(`${API_BASE}/api/funding/bridges?region=${encodeURIComponent(region)}`),
+        fetch(`${API_BASE}/api/funding/roads?region=${encodeURIComponent(region)}`),
+        fetch(`${API_BASE}/api/funding/infrastructure?region=${encodeURIComponent(region)}`),
+      ]);
+      
+      if (bridgesRes.ok) {
+        const data = await bridgesRes.json();
         setHighRiskBridges(data);
       }
+      if (roadsRes.ok) {
+        const data = await roadsRes.json();
+        setHighRiskRoads(data);
+      }
+      if (infraRes.ok) {
+        const data = await infraRes.json();
+        setHighRiskInfra(data);
+      }
     } catch (err) {
-      console.error("Error fetching high-risk bridges:", err);
+      console.error("Error fetching high-risk infrastructure:", err);
     }
   }, [region]);
 
   // Initial load
   useEffect(() => {
     fetchOptimization();
-    fetchHighRiskBridges();
+    fetchHighRiskInfrastructure();
   }, [region]); // Only on region change
 
   // Debounced budget change
@@ -223,7 +304,7 @@ export default function FundingOptimizer() {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [budget, includeMediumRisk]);
+  }, [budget, includeMediumRisk, includeRoads]);
 
   // Handle budget slider change
   const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,7 +327,7 @@ export default function FundingOptimizer() {
   const handleExportCSV = async () => {
     try {
       const res = await fetch(
-        `${API_BASE}/api/funding/export?region=${encodeURIComponent(region)}&budget=${budget}&format=csv`
+        `${API_BASE}/api/funding/export?region=${encodeURIComponent(region)}&budget=${budget}&format=csv&include_roads=${includeRoads}`
       );
       if (res.ok) {
         const blob = await res.blob();
@@ -268,7 +349,7 @@ export default function FundingOptimizer() {
   const handleExportJSON = async () => {
     try {
       const res = await fetch(
-        `${API_BASE}/api/funding/export?region=${encodeURIComponent(region)}&budget=${budget}&format=json`
+        `${API_BASE}/api/funding/export?region=${encodeURIComponent(region)}&budget=${budget}&format=json&include_roads=${includeRoads}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -381,7 +462,7 @@ export default function FundingOptimizer() {
             <button
               onClick={() => {
                 fetchOptimization();
-                fetchHighRiskBridges();
+                fetchHighRiskInfrastructure();
               }}
               disabled={loading}
               className="p-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
@@ -450,7 +531,19 @@ export default function FundingOptimizer() {
           </div>
           
           {/* Options */}
-          <div className="flex items-center gap-6 mt-4 pt-4 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-slate-100">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeRoads}
+                onChange={(e) => setIncludeRoads(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm text-slate-600">
+                Include Road Sections
+              </span>
+            </label>
+            
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -459,24 +552,33 @@ export default function FundingOptimizer() {
                 className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-sm text-slate-600">
-                Include Medium-Risk Bridges (55-70 score)
+                Include Medium-Risk (55-70 score)
               </span>
             </label>
-            
+          </div>
+          
+          {/* Infrastructure Summary */}
+          <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-slate-500">
             {highRiskBridges && (
-              <div className="text-sm text-slate-500">
+              <div>
                 <span className="font-medium text-slate-700">
                   {highRiskBridges.total_high_risk_bridges}
                 </span>{" "}
-                high-risk bridges •{" "}
-                <span className="font-medium text-red-600">
-                  {highRiskBridges.critical_bridges}
-                </span>{" "}
-                critical •{" "}
+                bridges ({highRiskBridges.critical_bridges} critical) •{" "}
                 <span className="font-medium text-slate-700">
                   {highRiskBridges.total_repair_cost_display}
+                </span>
+              </div>
+            )}
+            {highRiskRoads && (
+              <div>
+                <span className="font-medium text-slate-700">
+                  {highRiskRoads.total_high_risk_roads}
                 </span>{" "}
-                total cost
+                road sections ({highRiskRoads.critical_roads} critical) •{" "}
+                <span className="font-medium text-slate-700">
+                  {highRiskRoads.total_repair_cost_display}
+                </span>
               </div>
             )}
           </div>
@@ -520,12 +622,12 @@ export default function FundingOptimizer() {
 
         {/* KPI Summary */}
         {optimization && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <KPICard
               icon={<Building2 size={20} />}
-              label="Bridges Selected"
-              value={optimization.summary.bridges_selected}
-              subValue={`of ${highRiskBridges?.total_high_risk_bridges || 0} high-risk`}
+              label="Infrastructure Selected"
+              value={optimization.summary.total_infrastructure_selected || (optimization.summary.bridges_selected + optimization.summary.roads_selected)}
+              subValue={`${optimization.summary.bridges_selected} bridges, ${optimization.summary.roads_selected} roads`}
               color="blue"
               animate
             />
@@ -547,14 +649,26 @@ export default function FundingOptimizer() {
             />
             <KPICard
               icon={<AlertTriangle size={20} />}
-              label="Critical Funded"
+              label="Critical Bridges"
               value={`${optimization.summary.critical_bridges_funded}/${optimization.summary.critical_bridges_funded + optimization.summary.critical_bridges_unfunded}`}
               subValue={
                 optimization.summary.critical_bridges_unfunded > 0
                   ? `${optimization.summary.critical_bridges_unfunded} unfunded`
-                  : "All critical addressed"
+                  : "All funded"
               }
               color={optimization.summary.critical_bridges_unfunded > 0 ? "red" : "green"}
+              animate
+            />
+            <KPICard
+              icon={<AlertTriangle size={20} />}
+              label="Critical Roads"
+              value={`${optimization.summary.critical_roads_funded}/${optimization.summary.critical_roads_funded + optimization.summary.critical_roads_unfunded}`}
+              subValue={
+                optimization.summary.critical_roads_unfunded > 0
+                  ? `${optimization.summary.critical_roads_unfunded} unfunded`
+                  : "All funded"
+              }
+              color={optimization.summary.critical_roads_unfunded > 0 ? "orange" : "green"}
               animate
             />
           </div>
@@ -565,7 +679,7 @@ export default function FundingOptimizer() {
           {[
             { id: "optimization", label: "AI Optimized Selection", icon: <Zap size={16} /> },
             { id: "comparison", label: "AI vs Traditional", icon: <BarChart3 size={16} /> },
-            { id: "all-bridges", label: "All High-Risk Bridges", icon: <Map size={16} /> },
+            { id: "all-infrastructure", label: "All High-Risk Infrastructure", icon: <Map size={16} /> },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -620,10 +734,10 @@ export default function FundingOptimizer() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold text-slate-900">
-                      AI-Optimized Project Selection
+                      AI-Optimized Infrastructure Selection
                     </h3>
                     <p className="text-sm text-slate-500">
-                      Bridges ranked by Risk-to-Cost Ratio (RCR) for maximum impact
+                      Infrastructure ranked by Risk-to-Cost Ratio (RCR) for maximum impact
                     </p>
                   </div>
                   <div className="text-right">
@@ -635,105 +749,113 @@ export default function FundingOptimizer() {
                 </div>
               </div>
               
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Rank
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Bridge
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Condition
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Risk Score
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Est. Cost
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        RCR
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                        Justification
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {optimization?.selected_bridges.map((bridge, idx) => (
-                      <motion.tr
-                        key={bridge.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.03 }}
-                        className={clsx(
-                          "hover:bg-slate-50 transition-colors",
-                          bridge.is_critical && "bg-red-50/50"
-                        )}
-                      >
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">
-                            {bridge.rank}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="font-medium text-slate-900">
-                              {bridge.name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {bridge.id}
-                              {bridge.highway && ` • ${bridge.highway}`}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
+              {/* Selected Bridges */}
+              {optimization?.selected_bridges && optimization.selected_bridges.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+                    <h4 className="text-sm font-semibold text-blue-800">
+                      🌉 Bridges ({optimization.selected_bridges.length})
+                    </h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Rank
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Bridge
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Condition
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Risk Score
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Est. Cost
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            RCR
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Justification
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {optimization.selected_bridges.map((bridge, idx) => (
+                          <motion.tr
+                            key={bridge.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.03 }}
                             className={clsx(
-                              "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                              getConditionColor(bridge.condition)
+                              "hover:bg-slate-50 transition-colors",
+                              bridge.is_critical && "bg-red-50/50"
                             )}
                           >
-                            {bridge.condition}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">
+                                {bridge.rank}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-900">
+                                  {bridge.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {bridge.id}
+                                  {bridge.highway && ` • ${bridge.highway}`}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
                                 className={clsx(
-                                  "h-full rounded-full",
-                                  bridge.risk_score >= 85
-                                    ? "bg-red-500"
-                                    : bridge.risk_score >= 70
-                                    ? "bg-orange-500"
-                                    : "bg-yellow-500"
+                                  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                  getConditionColor(bridge.condition)
                                 )}
-                                style={{ width: `${bridge.risk_score}%` }}
-                              />
-                            </div>
-                            <span className="font-medium text-slate-900">
-                              {bridge.risk_score}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-slate-900">
-                            {bridge.cost_display}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            ±20%: {formatCurrency(bridge.cost_range_low)} -{" "}
-                            {formatCurrency(bridge.cost_range_high)}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={clsx(
-                              "font-bold",
-                              bridge.risk_cost_ratio >= 20
+                              >
+                                {bridge.condition}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={clsx(
+                                      "h-full rounded-full",
+                                      bridge.risk_score >= 85
+                                        ? "bg-red-500"
+                                        : bridge.risk_score >= 70
+                                        ? "bg-orange-500"
+                                        : "bg-yellow-500"
+                                    )}
+                                    style={{ width: `${bridge.risk_score}%` }}
+                                  />
+                                </div>
+                                <span className="font-medium text-slate-900">
+                                  {bridge.risk_score}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-slate-900">
+                                {bridge.cost_display}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                ±20%: {formatCurrency(bridge.cost_range_low)} -{" "}
+                                {formatCurrency(bridge.cost_range_high)}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "font-bold",
+                                  bridge.risk_cost_ratio >= 20
                                 ? "text-green-600"
                                 : bridge.risk_cost_ratio >= 15
                                 ? "text-blue-600"
@@ -753,11 +875,157 @@ export default function FundingOptimizer() {
                   </tbody>
                 </table>
               </div>
+              </div>
+              )}
               
-              {optimization?.selected_bridges.length === 0 && (
-                <div className="py-20 text-center text-slate-500">
+              {/* No bridges message */}
+              {optimization?.selected_bridges?.length === 0 && includeRoads === false && (
+                <div className="py-10 text-center text-slate-500">
                   <Building2 size={48} className="mx-auto mb-4 text-slate-300" />
                   <p>No bridges selected. Increase budget to see recommendations.</p>
+                </div>
+              )}
+              
+              {/* Selected Roads */}
+              {optimization?.selected_roads && optimization.selected_roads.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 border-t">
+                    <h4 className="text-sm font-semibold text-amber-800">
+                      🛣️ Road Sections ({optimization.selected_roads.length})
+                    </h4>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Rank
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Highway / Section
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Condition
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Risk Score
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Length
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Est. Cost
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            RCR
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Justification
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {optimization.selected_roads.map((road, idx) => (
+                          <motion.tr
+                            key={road.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.03 }}
+                            className={clsx(
+                              "hover:bg-slate-50 transition-colors",
+                              road.is_critical && "bg-red-50/50"
+                            )}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm">
+                                {road.rank}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-900">
+                                  Highway {road.highway}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {road.section_description}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                  getConditionColor(road.condition)
+                                )}
+                              >
+                                {road.condition}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={clsx(
+                                      "h-full rounded-full",
+                                      road.risk_score >= 85
+                                        ? "bg-red-500"
+                                        : road.risk_score >= 70
+                                        ? "bg-orange-500"
+                                        : "bg-yellow-500"
+                                    )}
+                                    style={{ width: `${road.risk_score}%` }}
+                                  />
+                                </div>
+                                <span className="font-medium text-slate-900">
+                                  {road.risk_score}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-slate-900">
+                                {road.length_km.toFixed(1)} km
+                              </p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-slate-900">
+                                {road.cost_display}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                ${(road.cost_per_km / 1000).toFixed(0)}K/km
+                              </p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "font-bold",
+                                  road.risk_cost_ratio >= 20
+                                    ? "text-green-600"
+                                    : road.risk_cost_ratio >= 15
+                                    ? "text-blue-600"
+                                    : "text-slate-600"
+                                )}
+                              >
+                                {road.risk_cost_ratio.toFixed(1)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 max-w-xs">
+                              <p className="text-sm text-slate-600 truncate">
+                                {road.justification}
+                              </p>
+                            </td>
+                          </motion.tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {/* No infrastructure message */}
+              {optimization?.selected_bridges?.length === 0 && optimization?.selected_roads?.length === 0 && (
+                <div className="py-20 text-center text-slate-500">
+                  <Building2 size={48} className="mx-auto mb-4 text-slate-300" />
+                  <p>No infrastructure selected. Increase budget to see recommendations.</p>
                 </div>
               )}
             </div>
@@ -1005,133 +1273,287 @@ export default function FundingOptimizer() {
               </div>
             )
           ) : (
-            /* All High-Risk Bridges View */
-            highRiskBridges && (
-              <div>
-                <div className="p-4 bg-slate-50 border-b border-slate-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">
-                        All High-Risk Bridges in {region}
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        {highRiskBridges.total_high_risk_bridges} bridges with
-                        risk score &gt; 70
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-slate-500">
-                        Total Cost to Repair All
-                      </p>
-                      <p className="text-xl font-bold text-slate-900">
-                        {highRiskBridges.total_repair_cost_display}
-                      </p>
-                    </div>
+            /* All High-Risk Infrastructure View */
+            <div>
+              <div className="p-4 bg-slate-50 border-b border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">
+                      All High-Risk Infrastructure in {region}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      {(highRiskBridges?.total_high_risk_bridges || 0) + (highRiskRoads?.total_high_risk_roads || 0)} items with
+                      risk score &gt; 70
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-slate-500">
+                      Total Cost to Repair All
+                    </p>
+                    <p className="text-xl font-bold text-slate-900">
+                      {formatCurrency((highRiskBridges?.total_repair_cost || 0) + (highRiskRoads?.total_repair_cost || 0))}
+                    </p>
                   </div>
                 </div>
+                
+                {/* Infrastructure Filter */}
+                <div className="flex gap-2 mt-3">
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "bridges", label: `Bridges (${highRiskBridges?.total_high_risk_bridges || 0})` },
+                    { id: "roads", label: `Roads (${highRiskRoads?.total_high_risk_roads || 0})` },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setInfraFilter(filter.id as typeof infraFilter)}
+                      className={clsx(
+                        "px-3 py-1 text-sm rounded-lg transition-colors",
+                        infraFilter === filter.id
+                          ? "bg-indigo-600 text-white"
+                          : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                      )}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          Bridge
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          Condition
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          Risk Score
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          Est. Cost
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          RCR
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
-                          Year Built
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {highRiskBridges.bridges.map((bridge) => (
-                        <tr
-                          key={bridge.id}
-                          className={clsx(
-                            "hover:bg-slate-50 transition-colors",
-                            bridge.is_critical && "bg-red-50/50"
-                          )}
-                        >
-                          <td className="px-4 py-3">
-                            <div>
-                              <p className="font-medium text-slate-900">
-                                {bridge.name}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {bridge.id}
-                                {bridge.highway && ` • ${bridge.highway}`}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={clsx(
-                                "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                                getConditionColor(bridge.condition)
-                              )}
-                            >
-                              {bridge.condition}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
+              {/* Bridges Table */}
+              {(infraFilter === "all" || infraFilter === "bridges") && highRiskBridges && highRiskBridges.bridges.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-blue-50 border-b border-blue-100">
+                    <h4 className="text-sm font-semibold text-blue-800">
+                      🌉 Bridges ({highRiskBridges.total_high_risk_bridges}) - {highRiskBridges.total_repair_cost_display}
+                    </h4>
+                  </div>
+                  <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Bridge
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Condition
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Risk Score
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Est. Cost
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            RCR
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Year Built
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {highRiskBridges.bridges.map((bridge) => (
+                          <tr
+                            key={bridge.id}
+                            className={clsx(
+                              "hover:bg-slate-50 transition-colors",
+                              bridge.is_critical && "bg-red-50/50"
+                            )}
+                          >
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-900">
+                                  {bridge.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {bridge.id}
+                                  {bridge.highway && ` • ${bridge.highway}`}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                  getConditionColor(bridge.condition)
+                                )}
+                              >
+                                {bridge.condition}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={clsx(
+                                    "font-bold",
+                                    bridge.risk_score >= 85
+                                      ? "text-red-600"
+                                      : bridge.risk_score >= 70
+                                      ? "text-orange-600"
+                                      : "text-yellow-600"
+                                  )}
+                                >
+                                  {bridge.risk_score}
+                                </span>
+                                {bridge.is_critical && (
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                    CRITICAL
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              {bridge.cost_display}
+                            </td>
+                            <td className="px-4 py-3">
                               <span
                                 className={clsx(
                                   "font-bold",
-                                  bridge.risk_score >= 85
-                                    ? "text-red-600"
-                                    : bridge.risk_score >= 70
-                                    ? "text-orange-600"
-                                    : "text-yellow-600"
+                                  bridge.risk_cost_ratio >= 20
+                                    ? "text-green-600"
+                                    : bridge.risk_cost_ratio >= 15
+                                    ? "text-blue-600"
+                                    : "text-slate-600"
                                 )}
                               >
-                                {bridge.risk_score}
+                                {bridge.risk_cost_ratio.toFixed(1)}
                               </span>
-                              {bridge.is_critical && (
-                                <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
-                                  CRITICAL
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            {bridge.cost_display}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={clsx(
-                                "font-bold",
-                                bridge.risk_cost_ratio >= 20
-                                  ? "text-green-600"
-                                  : bridge.risk_cost_ratio >= 15
-                                  ? "text-blue-600"
-                                  : "text-slate-600"
-                              )}
-                            >
-                              {bridge.risk_cost_ratio.toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {bridge.year_built || "Unknown"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {bridge.year_built || "Unknown"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )
+              )}
+
+              {/* Roads Table */}
+              {(infraFilter === "all" || infraFilter === "roads") && highRiskRoads && highRiskRoads.roads.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 border-t">
+                    <h4 className="text-sm font-semibold text-amber-800">
+                      🛣️ Road Sections ({highRiskRoads.total_high_risk_roads}) - {highRiskRoads.total_repair_cost_display} ({highRiskRoads.total_length_km?.toFixed(1)} km)
+                    </h4>
+                  </div>
+                  <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Highway / Section
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Condition
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Risk Score
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Length
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            Est. Cost
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            RCR
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase">
+                            PCI
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {highRiskRoads.roads.map((road) => (
+                          <tr
+                            key={road.id}
+                            className={clsx(
+                              "hover:bg-slate-50 transition-colors",
+                              road.is_critical && "bg-red-50/50"
+                            )}
+                          >
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-medium text-slate-900">
+                                  Highway {road.highway}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {road.section_description}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                  getConditionColor(road.condition)
+                                )}
+                              >
+                                {road.condition}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={clsx(
+                                    "font-bold",
+                                    road.risk_score >= 85
+                                      ? "text-red-600"
+                                      : road.risk_score >= 70
+                                      ? "text-orange-600"
+                                      : "text-yellow-600"
+                                  )}
+                                >
+                                  {road.risk_score}
+                                </span>
+                                {road.is_critical && (
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
+                                    CRITICAL
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-slate-900">
+                              {road.length_km?.toFixed(1)} km
+                            </td>
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              {road.cost_display}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "font-bold",
+                                  road.risk_cost_ratio >= 20
+                                    ? "text-green-600"
+                                    : road.risk_cost_ratio >= 15
+                                    ? "text-blue-600"
+                                    : "text-slate-600"
+                                )}
+                              >
+                                {road.risk_cost_ratio?.toFixed(1)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {road.pci !== null ? road.pci.toFixed(0) : "N/A"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {/* No data message */}
+              {!highRiskBridges?.bridges?.length && !highRiskRoads?.roads?.length && (
+                <div className="py-20 text-center text-slate-500">
+                  <Building2 size={48} className="mx-auto mb-4 text-slate-300" />
+                  <p>No high-risk infrastructure found in this region.</p>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

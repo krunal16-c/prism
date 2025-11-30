@@ -842,24 +842,28 @@ def invalidate_cache(region: str):
 def optimize_funding(
     region: str = Query(default="Ontario", description="Province/territory name"),
     budget: float = Query(default=50_000_000, ge=0, le=500_000_000, description="Available budget in dollars"),
-    include_medium_risk: bool = Query(default=False, description="Include medium-risk bridges (55-70 score)")
+    include_medium_risk: bool = Query(default=False, description="Include medium-risk infrastructure (55-70 score)"),
+    include_roads: bool = Query(default=True, description="Include road sections in optimization")
 ):
     """
-    Optimize bridge repair selection using AI Risk-to-Cost Ratio (RCR).
+    Optimize infrastructure repair selection using AI Risk-to-Cost Ratio (RCR).
     
-    Returns optimal selection of bridges to maximize risk reduction per dollar.
-    Critical bridges (score >85) are prioritized if budget allows.
+    Returns optimal selection of bridges and roads to maximize risk reduction per dollar.
+    Critical infrastructure (score >85) is prioritized if budget allows.
     """
     service = funding_optimizer_service.get_funding_optimizer_service()
-    result = service.optimize_budget(region, budget, include_medium_risk)
+    result = service.optimize_budget(region, budget, include_medium_risk, include_roads)
     
     return {
         "region": region,
         "budget": budget,
         "budget_display": f"${budget:,.0f}",
         "selected_bridges": result.selected_bridges,
+        "selected_roads": result.selected_roads,
         "summary": {
             "bridges_selected": result.total_bridges_selected,
+            "roads_selected": result.total_roads_selected,
+            "total_infrastructure_selected": result.total_bridges_selected + result.total_roads_selected,
             "total_cost": result.total_cost,
             "cost_display": f"${result.total_cost:,.0f}",
             "budget_remaining": result.budget_remaining,
@@ -869,8 +873,11 @@ def optimize_funding(
             "avg_risk_score": result.avg_risk_score,
             "critical_bridges_funded": result.critical_bridges_funded,
             "critical_bridges_unfunded": result.critical_bridges_unfunded,
+            "critical_roads_funded": result.critical_roads_funded,
+            "critical_roads_unfunded": result.critical_roads_unfunded,
         },
         "unfunded_critical_bridges": result.unfunded_critical_bridges,
+        "unfunded_critical_roads": result.unfunded_critical_roads,
         "warnings": result.warnings,
         "algorithm": "Risk-to-Cost Ratio (RCR) Optimization"
     }
@@ -926,11 +933,64 @@ def get_high_risk_bridges(
     }
 
 
+@app.get("/api/funding/roads")
+def get_high_risk_roads(
+    region: str = Query(default="Ontario", description="Province/territory name")
+):
+    """
+    Get all high-risk road sections for a region with cost estimates.
+    
+    Returns road sections with risk score > 70 and their estimated repair costs.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.get_all_high_risk_roads(region)
+    
+    return {
+        "region": region,
+        "total_high_risk_roads": result["total_high_risk_roads"],
+        "critical_roads": result["critical_roads"],
+        "total_repair_cost": result["total_repair_cost"],
+        "total_repair_cost_display": f"${result['total_repair_cost']:,.0f}",
+        "critical_repair_cost": result["critical_repair_cost"],
+        "critical_repair_cost_display": f"${result['critical_repair_cost']:,.0f}",
+        "total_length_km": result["total_length_km"],
+        "roads": result["roads"]
+    }
+
+
+@app.get("/api/funding/infrastructure")
+def get_all_high_risk_infrastructure(
+    region: str = Query(default="Ontario", description="Province/territory name")
+):
+    """
+    Get all high-risk infrastructure (bridges + roads) for a region.
+    
+    Returns combined summary of all high-risk infrastructure with costs.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.get_all_high_risk_infrastructure(region)
+    
+    return {
+        "region": region,
+        "summary": {
+            "total_infrastructure_count": result["total_infrastructure_count"],
+            "total_critical_count": result["total_critical_count"],
+            "total_repair_cost": result["total_repair_cost"],
+            "total_repair_cost_display": f"${result['total_repair_cost']:,.0f}",
+            "total_critical_repair_cost": result["total_critical_repair_cost"],
+            "total_critical_repair_cost_display": f"${result['total_critical_repair_cost']:,.0f}",
+        },
+        "bridges": result["bridges"],
+        "roads": result["roads"]
+    }
+
+
 @app.get("/api/funding/export")
 def export_funding_proposal(
     region: str = Query(default="Ontario", description="Province/territory name"),
     budget: float = Query(default=50_000_000, ge=0, le=500_000_000, description="Available budget in dollars"),
-    format: str = Query(default="json", description="Export format: json, csv")
+    format: str = Query(default="json", description="Export format: json, csv"),
+    include_roads: bool = Query(default=True, description="Include road sections in export")
 ):
     """
     Export funding proposal for budget presentation.
@@ -938,7 +998,7 @@ def export_funding_proposal(
     Returns detailed project list with justifications.
     """
     service = funding_optimizer_service.get_funding_optimizer_service()
-    result = service.optimize_budget(region, budget)
+    result = service.optimize_budget(region, budget, include_roads=include_roads)
     comparison = service.compare_approaches(region, budget)
     
     export_data = {
@@ -949,25 +1009,31 @@ def export_funding_proposal(
             "budget_requested": budget,
             "budget_display": f"${budget:,.0f}",
             "bridges_to_repair": result.total_bridges_selected,
+            "roads_to_repair": result.total_roads_selected,
+            "total_infrastructure": result.total_bridges_selected + result.total_roads_selected,
             "total_cost": result.total_cost,
             "risk_reduction_percent": result.risk_reduction_percent,
             "improvement_over_traditional": comparison.improvement_percent,
             "critical_bridges_addressed": result.critical_bridges_funded,
-            "unfunded_critical_count": result.critical_bridges_unfunded,
+            "critical_roads_addressed": result.critical_roads_funded,
+            "unfunded_critical_bridges": result.critical_bridges_unfunded,
+            "unfunded_critical_roads": result.critical_roads_unfunded,
         },
         "methodology": {
             "algorithm": "Risk-to-Cost Ratio (RCR) Optimization",
-            "description": "Bridges selected based on maximum risk reduction per dollar spent",
-            "prioritization": "Critical bridges (risk >85) prioritized, then high-risk bridges by RCR"
+            "description": "Infrastructure selected based on maximum risk reduction per dollar spent",
+            "prioritization": "Critical infrastructure (risk >85) prioritized, then high-risk items by RCR"
         },
-        "project_list": result.selected_bridges,
+        "bridge_project_list": result.selected_bridges,
+        "road_project_list": result.selected_roads,
         "comparison": {
             "ai_approach": comparison.ai_approach,
             "traditional_approach": comparison.traditional_approach,
             "improvement": comparison.improvement_description
         },
         "warnings": result.warnings,
-        "unfunded_critical_bridges": result.unfunded_critical_bridges
+        "unfunded_critical_bridges": result.unfunded_critical_bridges,
+        "unfunded_critical_roads": result.unfunded_critical_roads
     }
     
     if format == "csv":
@@ -978,15 +1044,16 @@ def export_funding_proposal(
         output = io.StringIO()
         writer = csv.writer(output)
         
-        # Header
+        # Header for bridges
         writer.writerow([
-            "Rank", "Bridge ID", "Name", "Condition", "Risk Score",
-            "Estimated Cost", "Highway", "Year Built", "Justification"
+            "Type", "Rank", "ID", "Name/Highway", "Condition", "Risk Score",
+            "Estimated Cost", "Highway/Section", "Year Built/Length", "Justification"
         ])
         
-        # Data rows
+        # Bridge data rows
         for bridge in result.selected_bridges:
             writer.writerow([
+                "Bridge",
                 bridge.get("rank", ""),
                 bridge["id"],
                 bridge["name"],
@@ -996,6 +1063,21 @@ def export_funding_proposal(
                 bridge.get("highway", "N/A"),
                 bridge.get("year_built", "Unknown"),
                 bridge.get("justification", "")
+            ])
+        
+        # Road data rows
+        for road in result.selected_roads:
+            writer.writerow([
+                "Road",
+                road.get("rank", ""),
+                road["id"],
+                road.get("section_description", road["highway"]),
+                road["condition"],
+                road["risk_score"],
+                road["cost_display"],
+                road["highway"],
+                f"{road.get('length_km', 'N/A')} km",
+                road.get("justification", "")
             ])
         
         return PlainTextResponse(
