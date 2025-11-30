@@ -7,6 +7,7 @@ import Optimizer from "@/components/Optimizer";
 import RiskDashboard from "@/components/RiskDashboard";
 import GovernmentDashboard from "@/components/GovernmentDashboard";
 import HighwayDegradation from "@/components/HighwayDegradation";
+import FundingOptimizer from "@/components/FundingOptimizer";
 import axios from "axios";
 import { Asset, BridgeLocation } from "@/types";
 import { 
@@ -18,7 +19,8 @@ import {
   ShieldAlert,
   Building2,
   Landmark,
-  TrendingDown
+  TrendingDown,
+  Target
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
@@ -38,6 +40,7 @@ export default function Home() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGovernmentDashboard, setShowGovernmentDashboard] = useState(false);
   const [showHighwayDegradation, setShowHighwayDegradation] = useState(false);
+  const [showFundingOptimizer, setShowFundingOptimizer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeView, setActiveView] = useState<'map' | 'dashboard'>('map');
   const [selectedBridge, setSelectedBridge] = useState<BridgeLocation | null>(null);
@@ -132,6 +135,13 @@ export default function Home() {
             active={showHighwayDegradation} 
             collapsed={!sidebarOpen}
             onClick={() => setShowHighwayDegradation(true)}
+          />
+          <NavItem 
+            icon={<Target size={20} />} 
+            label="Funding Optimizer" 
+            active={showFundingOptimizer} 
+            collapsed={!sidebarOpen}
+            onClick={() => setShowFundingOptimizer(true)}
           />
           <NavItem 
             icon={<LayoutDashboard size={20} />} 
@@ -284,6 +294,27 @@ export default function Home() {
         {showDashboard && <RiskDashboard assets={assets} onClose={() => setShowDashboard(false)} />}
         {showGovernmentDashboard && <GovernmentDashboard onClose={() => setShowGovernmentDashboard(false)} />}
         {showHighwayDegradation && <HighwayDegradation onClose={() => setShowHighwayDegradation(false)} />}
+        {showFundingOptimizer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[2000] overflow-auto"
+          >
+            <div className="min-h-screen">
+              <div className="absolute top-4 right-4 z-10">
+                <button
+                  onClick={() => setShowFundingOptimizer(false)}
+                  className="p-2 bg-white rounded-full shadow-lg hover:bg-slate-100 transition-colors"
+                >
+                  <span className="sr-only">Close</span>
+                  ✕
+                </button>
+              </div>
+              <FundingOptimizer />
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

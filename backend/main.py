@@ -1,13 +1,16 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 
 import models, schemas, crud, database, risk_engine, optimizer, claude_service
 import government_data_service
 import road_degradation_service
+import funding_optimizer_service
 
 load_dotenv()
 
@@ -829,6 +832,181 @@ def invalidate_cache(region: str):
         "regions_invalidated": count,
         "message": f"Cache invalidated for {region if region != 'all' else 'all regions'}"
     }
+
+
+# ============================================
+# Funding Scenario Optimizer API (Feature F4)
+# ============================================
+
+@app.get("/api/funding/optimize")
+def optimize_funding(
+    region: str = Query(default="Ontario", description="Province/territory name"),
+    budget: float = Query(default=50_000_000, ge=0, le=500_000_000, description="Available budget in dollars"),
+    include_medium_risk: bool = Query(default=False, description="Include medium-risk bridges (55-70 score)")
+):
+    """
+    Optimize bridge repair selection using AI Risk-to-Cost Ratio (RCR).
+    
+    Returns optimal selection of bridges to maximize risk reduction per dollar.
+    Critical bridges (score >85) are prioritized if budget allows.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.optimize_budget(region, budget, include_medium_risk)
+    
+    return {
+        "region": region,
+        "budget": budget,
+        "budget_display": f"${budget:,.0f}",
+        "selected_bridges": result.selected_bridges,
+        "summary": {
+            "bridges_selected": result.total_bridges_selected,
+            "total_cost": result.total_cost,
+            "cost_display": f"${result.total_cost:,.0f}",
+            "budget_remaining": result.budget_remaining,
+            "budget_utilization_percent": result.budget_utilization_percent,
+            "total_risk_reduction": result.total_risk_reduction,
+            "risk_reduction_percent": result.risk_reduction_percent,
+            "avg_risk_score": result.avg_risk_score,
+            "critical_bridges_funded": result.critical_bridges_funded,
+            "critical_bridges_unfunded": result.critical_bridges_unfunded,
+        },
+        "unfunded_critical_bridges": result.unfunded_critical_bridges,
+        "warnings": result.warnings,
+        "algorithm": "Risk-to-Cost Ratio (RCR) Optimization"
+    }
+
+
+@app.get("/api/funding/compare")
+def compare_funding_approaches(
+    region: str = Query(default="Ontario", description="Province/territory name"),
+    budget: float = Query(default=50_000_000, ge=0, le=500_000_000, description="Available budget in dollars")
+):
+    """
+    Compare AI-optimized vs Traditional (age-based) approach.
+    
+    Returns side-by-side comparison showing improvement percentage.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.compare_approaches(region, budget)
+    
+    return {
+        "region": region,
+        "budget": budget,
+        "budget_display": f"${budget:,.0f}",
+        "ai_optimized": result.ai_approach,
+        "traditional": result.traditional_approach,
+        "improvement": {
+            "percent": result.improvement_percent,
+            "description": result.improvement_description
+        }
+    }
+
+
+@app.get("/api/funding/bridges")
+def get_high_risk_bridges(
+    region: str = Query(default="Ontario", description="Province/territory name")
+):
+    """
+    Get all high-risk bridges for a region with cost estimates.
+    
+    Returns bridges with risk score > 70 and their estimated repair costs.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.get_all_high_risk_bridges(region)
+    
+    return {
+        "region": region,
+        "total_high_risk_bridges": result["total_high_risk_bridges"],
+        "critical_bridges": result["critical_bridges"],
+        "total_repair_cost": result["total_repair_cost"],
+        "total_repair_cost_display": f"${result['total_repair_cost']:,.0f}",
+        "critical_repair_cost": result["critical_repair_cost"],
+        "critical_repair_cost_display": f"${result['critical_repair_cost']:,.0f}",
+        "bridges": result["bridges"]
+    }
+
+
+@app.get("/api/funding/export")
+def export_funding_proposal(
+    region: str = Query(default="Ontario", description="Province/territory name"),
+    budget: float = Query(default=50_000_000, ge=0, le=500_000_000, description="Available budget in dollars"),
+    format: str = Query(default="json", description="Export format: json, csv")
+):
+    """
+    Export funding proposal for budget presentation.
+    
+    Returns detailed project list with justifications.
+    """
+    service = funding_optimizer_service.get_funding_optimizer_service()
+    result = service.optimize_budget(region, budget)
+    comparison = service.compare_approaches(region, budget)
+    
+    export_data = {
+        "title": f"Infrastructure Funding Proposal - {region}",
+        "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "executive_summary": {
+            "region": region,
+            "budget_requested": budget,
+            "budget_display": f"${budget:,.0f}",
+            "bridges_to_repair": result.total_bridges_selected,
+            "total_cost": result.total_cost,
+            "risk_reduction_percent": result.risk_reduction_percent,
+            "improvement_over_traditional": comparison.improvement_percent,
+            "critical_bridges_addressed": result.critical_bridges_funded,
+            "unfunded_critical_count": result.critical_bridges_unfunded,
+        },
+        "methodology": {
+            "algorithm": "Risk-to-Cost Ratio (RCR) Optimization",
+            "description": "Bridges selected based on maximum risk reduction per dollar spent",
+            "prioritization": "Critical bridges (risk >85) prioritized, then high-risk bridges by RCR"
+        },
+        "project_list": result.selected_bridges,
+        "comparison": {
+            "ai_approach": comparison.ai_approach,
+            "traditional_approach": comparison.traditional_approach,
+            "improvement": comparison.improvement_description
+        },
+        "warnings": result.warnings,
+        "unfunded_critical_bridges": result.unfunded_critical_bridges
+    }
+    
+    if format == "csv":
+        # Return CSV-formatted data
+        import io
+        import csv
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Header
+        writer.writerow([
+            "Rank", "Bridge ID", "Name", "Condition", "Risk Score",
+            "Estimated Cost", "Highway", "Year Built", "Justification"
+        ])
+        
+        # Data rows
+        for bridge in result.selected_bridges:
+            writer.writerow([
+                bridge.get("rank", ""),
+                bridge["id"],
+                bridge["name"],
+                bridge["condition"],
+                bridge["risk_score"],
+                bridge["cost_display"],
+                bridge.get("highway", "N/A"),
+                bridge.get("year_built", "Unknown"),
+                bridge.get("justification", "")
+            ])
+        
+        return PlainTextResponse(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=Budget_Proposal_{region}_{datetime.now().strftime('%Y%m%d')}.csv"
+            }
+        )
+    
+    return export_data
 
 
 # ============================================
