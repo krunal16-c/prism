@@ -10,3 +10,5 @@ numpy
 pytest
 httpx
 google-generativeai
+mcp>=1.22.0
+httpx-sse>=0.4.0

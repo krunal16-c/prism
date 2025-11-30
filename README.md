@@ -4,6 +4,7 @@ PRISM is a government-grade infrastructure risk management system designed for A
 
 ## Features
 
+-   **Live Government Data Dashboard**: Real-time infrastructure statistics from Statistics Canada with province selection, condition breakdowns, and interactive maps.
 -   **Interactive Map**: Visualizes 150+ infrastructure assets with risk-based color coding.
 -   **AI Risk Scoring**: Calculates risk scores (0-100) based on condition, usage, climate, redundancy, and population impact.
 -   **Natural Language Query**: Ask questions like "Show critical bridges in Nova Scotia" using Claude AI.
@@ -67,10 +68,19 @@ PRISM is a government-grade infrastructure risk management system designed for A
 
 ## API Documentation
 
+### Core APIs
 -   `GET /api/assets`: List all assets.
 -   `POST /api/risk/calculate`: Calculate risk for an asset.
 -   `POST /api/query/nl`: Natural language query.
 -   `POST /api/optimize`: Run budget optimization.
 
+### Government Dashboard APIs
+-   `GET /api/dashboard/regions`: Get list of all supported provinces.
+-   `GET /api/dashboard/summary/{region}`: Get comprehensive dashboard data for a region.
+-   `GET /api/dashboard/bridges/{region}`: Get bridge locations for map display.
+-   `GET /api/dashboard/national`: Get aggregated national statistics.
+-   `GET /api/dashboard/conditions/{region}`: Get detailed condition breakdown.
+-   `GET /api/dashboard/costs/{region}`: Get infrastructure cost data.
+
 ## Data Source
-**Note**: All asset data is synthetic but generated based on realistic geographic and demographic patterns of Atlantic Canada for demonstration purposes.
+**Note**: All asset data is synthetic but generated based on realistic geographic and demographic patterns of Atlantic Canada for demonstration purposes. Government dashboard data simulates Statistics Canada infrastructure patterns.
