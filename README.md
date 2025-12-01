@@ -31,10 +31,22 @@ PRISM is a government-grade infrastructure risk management system designed for C
 -   **Federal Funding Qualification**: Identifies bundles meeting $20M+ thresholds
 -   **Traffic Disruption Minimization**: Optimizes repair scheduling to reduce closures
 
+### AI Agent Assistant (Feature 13)
+-   **Natural Language Infrastructure Queries**: Ask questions in plain English about bridges, roads, and conditions
+-   **MCP Tool Integration**: Dynamically connects to Government of Canada data sources via MCP servers
+-   **Streaming Responses**: Real-time response streaming with tool call visibility
+-   **Multi-Source Data Analysis**: Searches datasets, downloads files, and processes CSV/JSON data
+-   **LangChain + OpenAI**: GPT-4o-mini powered reasoning with structured tool calling
+-   **Suggested Queries**: Pre-built prompts for common infrastructure questions
+-   **18 Available Tools**: 14 MCP tools + 4 local file operations
+-   **Formatted Output**: Markdown rendering with tables, headers, lists, and code blocks
+-   **Collapsible Tool Calls**: View tool execution status and arguments in real-time
+
 ## Tech Stack
 
 -   **Backend**: Python 3.11+, FastAPI, SQLite, SQLAlchemy, Scikit-learn, Anthropic API
 -   **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS, Leaflet, Recharts
+-   **AI Agent**: LangChain, OpenAI GPT-4, MCP Client (SSE)
 -   **Data Integration**: MCP (Model Context Protocol) for real-time road condition data
 -   **Database**: SQLite with 24-hour caching for MCP data
 
@@ -90,6 +102,35 @@ PRISM is a government-grade infrastructure risk management system designed for C
     ```
 4.  Open [http://localhost:3000](http://localhost:3000).
 
+### AI Agent Setup (gov_agents)
+1.  Navigate to `gov_agents`:
+    ```bash
+    cd gov_agents
+    ```
+2.  Create virtual environment:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+3.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  Set environment variables in `.env`:
+    ```
+    OPENAI_API_KEY=your_openai_key
+    ```
+5.  Ensure MCP servers are running:
+    ```bash
+    # Transportation MCP on port 8001
+    # Gov MCP on port 8002
+    ```
+6.  Start the agent server:
+    ```bash
+    python main.py
+    ```
+7.  The agent API will be available at [http://localhost:8080](http://localhost:8080)
+
 ## API Documentation
 
 ### Core APIs
@@ -122,6 +163,25 @@ PRISM is a government-grade infrastructure risk management system designed for C
 -   `GET /api/roads/corridor/bundles`: Get multi-section repair bundles
 -   `GET /api/roads/corridor/directional-analysis`: Get directional condition comparison
 -   `GET /api/roads/corridor/summary`: Get corridor optimization summary
+
+### AI Agent API (Feature 13)
+-   `POST http://localhost:8080/chat`: Streaming chat endpoint with SSE responses
+    -   Request: `{ "message": "your question" }`
+    -   Response: Server-Sent Events stream with `[TOOL_START]`, `[TOOL_END]`, and `[DONE]` markers
+-   `GET http://localhost:8080/health`: Check agent initialization status
+
+### Available MCP Tools
+| Tool | Description | Source |
+|------|-------------|--------|
+| `query_bridges` | Query bridge data by province/condition | Transportation MCP |
+| `query_road_conditions` | Get road condition metrics | Transportation MCP |
+| `search_datasets` | Search Government of Canada datasets | Gov MCP |
+| `get_dataset_details` | Get detailed dataset metadata | Gov MCP |
+| `list_dataset_resources` | List files in a dataset | Gov MCP |
+| `download_file` | Download a file from URL | Local |
+| `unzip_file` | Extract ZIP archives | Local |
+| `read_csv_head` | Read first N rows of CSV | Local |
+| `list_files` | List files in a directory | Local |
 
 ## Data Sources
 

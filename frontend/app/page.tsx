@@ -8,6 +8,7 @@ import RiskDashboard from "@/components/RiskDashboard";
 import GovernmentDashboard from "@/components/GovernmentDashboard";
 import HighwayDegradation from "@/components/HighwayDegradation";
 import FundingOptimizer from "@/components/FundingOptimizer";
+import { ChatInterface } from "@/components/ChatInterface";
 import axios from "axios";
 import { Asset, BridgeLocation } from "@/types";
 import { 
@@ -20,7 +21,8 @@ import {
   Building2,
   Landmark,
   TrendingDown,
-  Target
+  Target,
+  MessageSquare
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import clsx from "clsx";
@@ -41,6 +43,7 @@ export default function Home() {
   const [showGovernmentDashboard, setShowGovernmentDashboard] = useState(false);
   const [showHighwayDegradation, setShowHighwayDegradation] = useState(false);
   const [showFundingOptimizer, setShowFundingOptimizer] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeView, setActiveView] = useState<'map' | 'dashboard'>('map');
   const [selectedBridge, setSelectedBridge] = useState<BridgeLocation | null>(null);
@@ -142,6 +145,13 @@ export default function Home() {
             active={showFundingOptimizer} 
             collapsed={!sidebarOpen}
             onClick={() => setShowFundingOptimizer(true)}
+          />
+          <NavItem 
+            icon={<MessageSquare size={20} />} 
+            label="AI Agent" 
+            active={showChat} 
+            collapsed={!sidebarOpen}
+            onClick={() => setShowChat(true)}
           />
           <NavItem 
             icon={<LayoutDashboard size={20} />} 
@@ -314,6 +324,9 @@ export default function Home() {
               <FundingOptimizer />
             </div>
           </motion.div>
+        )}
+        {showChat && (
+          <ChatInterface onClose={() => setShowChat(false)} />
         )}
       </AnimatePresence>
     </div>

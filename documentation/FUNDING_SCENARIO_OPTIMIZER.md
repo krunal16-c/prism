@@ -43,8 +43,8 @@ PRISM's Funding Scenario Optimizer uses AI to analyze every piece of infrastruct
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    FUNDING OPTIMIZATION WORKFLOW                     │
-├─────────────────────────────────────────────────────────────────────┤
+│                    FUNDING OPTIMIZATION WORKFLOW                    │
+├───────────────────────────────────────────────────────────────────── ┤
 │                                                                      │
 │  1. DATA COLLECTION                                                  │
 │     ├── Bridge inspection data (condition, age, type)               │
