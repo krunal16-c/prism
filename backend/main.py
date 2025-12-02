@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
-import models, schemas, crud, database, risk_engine, optimizer, claude_service
+import models, schemas, crud, database, risk_engine, optimizer, gemini_service
 import government_data_service
 import road_degradation_service
 import funding_optimizer_service
@@ -67,7 +67,7 @@ def nl_query(request: schemas.NLQueryRequest, db: Session = Depends(get_db)):
     Supports both asset queries (internal DB) and bridge queries (Government data).
     """
     # 1. Interpret query with Claude/Gemini
-    interpretation = claude_service.interpret_query(request.query)
+    interpretation = gemini_service.interpret_query(request.query)
     
     data_source = interpretation.get("data_source", "assets")
     filters = interpretation.get("filters", {})

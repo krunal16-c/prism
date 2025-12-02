@@ -12,26 +12,26 @@ PRISM is a government-grade infrastructure risk management system designed for C
 -   **Budget Optimizer**: Allocates funding based on customizable priorities (Cost Efficiency, Equity, Resilience, Impact).
 -   **Risk Dashboard**: Real-time analytics and charts.
 
-### Highway Degradation Forecaster (Feature 10)
+### Highway Degradation Forecaster (Feature 1)
 -   **PCI Degradation Prediction**: Forecasts Pavement Condition Index (PCI) deterioration over 1-10 years
 -   **Climate-Adjusted Models**: Accounts for freeze-thaw cycles, regional climate zones, and seasonal factors
 -   **Traffic Impact Analysis**: Factors in AADT (Annual Average Daily Traffic) for degradation acceleration
 -   **Optimal Intervention Timing**: Identifies cost-effective maintenance windows
 -   **Economic Impact Calculator**: Quantifies vehicle damage, fuel waste, and freight delay costs
 
-### Winter Resilience Predictor (Feature 11)
+### Winter Resilience Predictor (Feature 2)
 -   **Freeze-Thaw Vulnerability Scoring**: Predicts which road sections will suffer worst winter damage
 -   **Pre-Winter Intervention Calculator**: ROI analysis for preventive vs reactive maintenance
 -   **Climate Zone Mapping**: Province-specific freeze-thaw cycle predictions
 -   **Threshold Crossing Alerts**: Identifies sections at risk of condition downgrades
 
-### Corridor Optimization (Feature 12)
+### Corridor Optimization (Feature 3)
 -   **Multi-Section Bundling**: Groups adjacent repair sections for mobilization cost savings (15-25%)
 -   **Directional Analysis**: Compares eastbound vs westbound condition differences
 -   **Federal Funding Qualification**: Identifies bundles meeting $20M+ thresholds
 -   **Traffic Disruption Minimization**: Optimizes repair scheduling to reduce closures
 
-### AI Agent Assistant (Feature 13)
+### AI Agent Assistant (Feature 4)
 -   **Natural Language Infrastructure Queries**: Ask questions in plain English about bridges, roads, and conditions
 -   **MCP Tool Integration**: Dynamically connects to Government of Canada data sources via MCP servers
 -   **Streaming Responses**: Real-time response streaming with tool call visibility
@@ -55,8 +55,55 @@ PRISM is a government-grade infrastructure risk management system designed for C
 ### Prerequisites
 -   Python 3.11+
 -   Node.js 18+
+-   Docker & Docker Compose (for containerized deployment)
 -   Anthropic API Key (optional for mock mode)
+-   OpenAI API Key (for AI Agent)
+-   Google API Key (for Gemini NL queries)
 -   MCP Transportation Server (optional - falls back to generated data)
+
+## Quick Start with Docker
+
+The easiest way to run PRISM is with Docker Compose:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/krunal16-c/prism.git
+cd prism
+
+# 2. Create environment file
+cp .env.example .env
+# Edit .env and add your API keys
+
+# 3. Build and start all services
+docker-compose up --build
+
+# 4. Access the application
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:8000
+# AI Agent: http://localhost:8080
+```
+
+### Docker Commands
+
+```bash
+# Start all services in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Rebuild a specific service
+docker-compose build backend
+docker-compose up -d backend
+
+# Remove volumes (reset database)
+docker-compose down -v
+```
+
+## Manual Setup (Development)
 
 ### Backend Setup
 1.  Navigate to `backend`:
@@ -74,6 +121,7 @@ PRISM is a government-grade infrastructure risk management system designed for C
     ```
 4.  Set environment variables in `.env`:
     ```
+    GOOGLE_API_KEY=your_gemini_key
     ANTHROPIC_API_KEY=your_key
     DATABASE_URL=sqlite:///./prism.db
     MCP_TRANSPORTATION_URL=http://localhost:8001/sse
