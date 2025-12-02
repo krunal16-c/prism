@@ -1,6 +1,6 @@
 # PRISM - Predictive Resource Intelligence for Strategic Management
 
-PRISM is a government-grade infrastructure risk management system designed for Canadian provinces. It leverages AI, MCP (Model Context Protocol) integration, and multi-criteria optimization to help decision-makers allocate budgets effectively for road infrastructure maintenance.
+PRISM is a government-grade infrastructure risk management system designed to help government officials make better decisions. It leverages AI, MCP (Model Context Protocol) integration, and multi-criteria optimization to help decision-makers allocate budgets effectively for infrastructure maintenance.
 
 ## Features
 
